@@ -36,6 +36,7 @@ const analyzerResult: AnalyzeResult = {
   usage: { inputTokens: 120, outputTokens: 40 },
   batches: 1,
   failedBatches: 0,
+  failedModelCalls: 0,
   truncatedBatches: 0,
 };
 

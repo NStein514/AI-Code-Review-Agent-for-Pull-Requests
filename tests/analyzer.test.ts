@@ -88,6 +88,7 @@ describe("ReviewerAnalyzer truncation handling", () => {
     expect(result.findings.some((entry) => entry.title === "partial result")).toBe(false);
     expect(result.truncatedBatches).toBe(1);
     expect(result.failedBatches).toBe(0);
+    expect(result.failedModelCalls).toBe(1);
     expect(result.usage).toEqual({ inputTokens: 200, outputTokens: 20 });
   });
 
@@ -122,6 +123,7 @@ describe("ReviewerAnalyzer truncation handling", () => {
       "recovered single file",
     ]);
     expect(result.truncatedBatches).toBe(1);
+    expect(result.failedModelCalls).toBe(1);
     expect(result.usage).toEqual({ inputTokens: 30, outputTokens: 6 });
   });
 
@@ -135,6 +137,7 @@ describe("ReviewerAnalyzer truncation handling", () => {
     const result = await analyzerWith(callModel).analyze(input);
 
     expect(result.failedBatches).toBe(1);
+    expect(result.failedModelCalls).toBe(1);
     expect(result.findings).toHaveLength(0);
     expect(result.errors[0]).toContain("did not call submit_findings");
   });
@@ -158,6 +161,7 @@ describe("ReviewerAnalyzer truncation handling", () => {
 
     expect(tokenBudgets).toEqual([8192, 16384, 32000]);
     expect(result.failedBatches).toBe(1);
+    expect(result.failedModelCalls).toBe(3);
     expect(result.truncatedBatches).toBe(1);
     expect(result.errors[0]).toContain("could not be recovered");
   });

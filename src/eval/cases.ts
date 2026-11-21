@@ -29,7 +29,6 @@ export type EvalCaseMeta = z.infer<typeof metaSchema>;
 
 export interface EvalCase {
   name: string;
-  dir: string;
   meta: EvalCaseMeta;
   files: FileDiff[];
   /** Head-revision sources for cases that include a `repo/` tree. */
@@ -107,7 +106,7 @@ export async function loadEvalCases(root: string): Promise<EvalCase[]> {
       if (content !== null) repoFiles.push({ path: file.path, content });
     }
 
-    cases.push({ name, dir, meta, files, repoFiles });
+    cases.push({ name, meta, files, repoFiles });
   }
 
   if (cases.length === 0) {

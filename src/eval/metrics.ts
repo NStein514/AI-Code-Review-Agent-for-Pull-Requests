@@ -185,12 +185,10 @@ export interface CalibrationSample {
 
 export interface CalibrationBucket {
   label: string;
-  minConfidence: number;
-  maxConfidence: number;
   total: number;
   matched: number;
-  precision: number | null;
-  averageConfidence: number | null;
+  precision: number;
+  averageConfidence: number;
 }
 
 export interface CalibrationResult {
@@ -213,43 +211,32 @@ const CALIBRATION_BUCKETS: Array<{ label: string; min: number; max: number }> = 
  * precision. Expected calibration error is the count-weighted gap.
  */
 export function calibrationBuckets(samples: CalibrationSample[]): CalibrationResult {
-  const buckets: CalibrationBucket[] = CALIBRATION_BUCKETS.map((bucket) => ({
-    label: bucket.label,
-    minConfidence: bucket.min,
-    maxConfidence: Math.min(bucket.max, 1),
-    total: 0,
-    matched: 0,
-    precision: null,
-    averageConfidence: null,
-  }));
-
-  const confidenceSums = new Array<number>(buckets.length).fill(0);
-
-  for (const sample of samples) {
-    const index = CALIBRATION_BUCKETS.findIndex(
-      (bucket) => sample.confidence >= bucket.min && sample.confidence < bucket.max,
-    );
-    if (index === -1) continue;
-
-    const bucket = buckets[index];
-    if (!bucket) continue;
-    bucket.total += 1;
-    if (sample.matched) bucket.matched += 1;
-    confidenceSums[index] = (confidenceSums[index] ?? 0) + sample.confidence;
-  }
-
+  const buckets: CalibrationBucket[] = [];
   let expectedCalibrationError = 0;
 
-  buckets.forEach((bucket, index) => {
-    if (bucket.total === 0) return;
-    bucket.precision = bucket.matched / bucket.total;
-    bucket.averageConfidence = (confidenceSums[index] ?? 0) / bucket.total;
-    if (samples.length > 0) {
-      expectedCalibrationError +=
-        (bucket.total / samples.length) *
-        Math.abs(bucket.precision - bucket.averageConfidence);
-    }
-  });
+  for (const definition of CALIBRATION_BUCKETS) {
+    const entries = samples.filter(
+      (sample) =>
+        sample.confidence >= definition.min && sample.confidence < definition.max,
+    );
+    if (entries.length === 0) continue;
+
+    const matched = entries.filter((sample) => sample.matched).length;
+    const precision = matched / entries.length;
+    const averageConfidence =
+      entries.reduce((total, sample) => total + sample.confidence, 0) / entries.length;
+
+    buckets.push({
+      label: definition.label,
+      total: entries.length,
+      matched,
+      precision,
+      averageConfidence,
+    });
+
+    expectedCalibrationError +=
+      (entries.length / samples.length) * Math.abs(precision - averageConfidence);
+  }
 
   return { buckets, expectedCalibrationError, total: samples.length };
 }

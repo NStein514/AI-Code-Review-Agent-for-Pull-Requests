@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Logger } from "pino";
-import type { AnthropicConfig, ReviewConfig, SemgrepConfig } from "../config.js";
+import type { AnthropicConfig, SemgrepConfig } from "../config.js";
 import {
   dedupeFindings,
   filterByConfidence,
@@ -36,10 +35,8 @@ export interface EvalCaseReport {
   merged: MetricsWithCounts;
   llm: MetricsWithCounts;
   semgrep: MetricsWithCounts | null;
-  semgrepAvailable: boolean;
   severityBelowFloor: number;
   usage: TokenUsage;
-  durationMs: number;
   misses: EvalLabel[];
   falsePositives: Array<{
     path: string;
@@ -71,19 +68,17 @@ export interface EvalReport {
   };
   usage: TokenUsage;
   durationMs: number;
-  /** Cases where every model batch failed; used to refuse bad baselines. */
-  modelFailures: number;
+  /** Model calls that failed; any failure blocks baseline saving. */
+  failedModelBatches: number;
   warnings: string[];
 }
 
 export interface EvaluationOptions {
   casesDir: string;
   anthropic: AnthropicConfig;
-  review: Pick<ReviewConfig, "maxDiffChars">;
+  maxDiffChars: number;
   semgrep: SemgrepConfig;
   threshold: number;
-  semgrepEnabled: boolean;
-  logger?: Logger;
   onCaseStart?: (name: string, index: number, total: number) => void;
 }
 
@@ -134,29 +129,26 @@ export async function evaluate(
     ((analyzerOptions: AnalyzerOptions) => new ReviewerAnalyzer(analyzerOptions));
   const analyzer = createAnalyzer({
     ...options.anthropic,
-    maxDiffChars: options.review.maxDiffChars,
-    ...(options.logger ? { logger: options.logger } : {}),
+    maxDiffChars: options.maxDiffChars,
   });
 
   const runStatic = deps.runSemgrep ?? runSemgrep;
   const caseReports: EvalCaseReport[] = [];
   const calibrationSamples: CalibrationSample[] = [];
   const warnings: string[] = [];
-  let modelFailures = 0;
+  let failedModelBatches = 0;
   let totalUsage: TokenUsage = { inputTokens: 0, outputTokens: 0 };
 
   for (const [index, evalCase] of cases.entries()) {
     options.onCaseStart?.(evalCase.name, index + 1, cases.length);
-    const caseStartedAt = Date.now();
     const labels = labelsForCase(evalCase.meta);
 
     let semgrepRun = emptySemgrepRun();
-    if (options.semgrepEnabled && evalCase.repoFiles.length > 0) {
+    if (options.semgrep.enabled && evalCase.repoFiles.length > 0) {
       semgrepRun = await runStatic({
         files: evalCase.repoFiles,
         config: options.semgrep.config,
         timeoutMs: options.semgrep.timeoutMs,
-        ...(options.logger ? { logger: options.logger } : {}),
       });
     }
 
@@ -200,14 +192,12 @@ export async function evaluate(
     }
 
     totalUsage = addUsage(totalUsage, analysis.usage);
-    if (analysis.batches > 0 && analysis.failedBatches >= analysis.batches) {
-      modelFailures += 1;
-    }
+    failedModelBatches += analysis.failedModelCalls;
 
     warnings.push(
       ...analysis.errors.map((error) => `${evalCase.name}: ${error}`),
     );
-    if (options.semgrepEnabled && semgrepRun.error) {
+    if (options.semgrep.enabled && semgrepRun.error) {
       warnings.push(`${evalCase.name}: semgrep: ${semgrepRun.error}`);
     }
 
@@ -218,10 +208,8 @@ export async function evaluate(
       merged: mergedScore.metrics,
       llm: llmScore.metrics,
       semgrep: semgrepScore?.metrics ?? null,
-      semgrepAvailable: semgrepRun.available,
       severityBelowFloor: mergedScore.severityBelowFloor,
       usage: analysis.usage,
-      durationMs: Date.now() - caseStartedAt,
       misses: mergedScore.outcome.falseNegatives,
       falsePositives: mergedScore.outcome.falsePositives.map((finding) => ({
         path: finding.path,
@@ -232,7 +220,10 @@ export async function evaluate(
     });
   }
 
-  const semgrepCases = caseReports.filter((report) => report.semgrepAvailable);
+  const semgrepCases = caseReports.filter(
+    (report): report is EvalCaseReport & { semgrep: MetricsWithCounts } =>
+      report.semgrep !== null,
+  );
   const calibration = calibrationBuckets(calibrationSamples);
 
   return {
@@ -252,18 +243,7 @@ export async function evaluate(
       semgrep:
         semgrepCases.length > 0
           ? summarize(
-              sumCounts(
-                semgrepCases.map((report) =>
-                  countsOf(report.semgrep ?? {
-                    truePositives: 0,
-                    falsePositives: 0,
-                    falseNegatives: 0,
-                    precision: 0,
-                    recall: 0,
-                    f1: 0,
-                  }),
-                ),
-              ),
+              sumCounts(semgrepCases.map((report) => countsOf(report.semgrep))),
               semgrepCases.length,
             )
           : null,
@@ -272,7 +252,7 @@ export async function evaluate(
     calibration,
     usage: totalUsage,
     durationMs: Date.now() - startedAt,
-    modelFailures,
+    failedModelBatches,
     warnings,
   };
 }

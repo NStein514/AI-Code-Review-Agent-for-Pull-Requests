@@ -100,5 +100,6 @@ describe("default Anthropic caller", () => {
     ]);
     expect(result.usage).toEqual({ inputTokens: 11, outputTokens: 7 });
     expect(result.failedBatches).toBe(0);
+    expect(result.failedModelCalls).toBe(0);
   });
 });

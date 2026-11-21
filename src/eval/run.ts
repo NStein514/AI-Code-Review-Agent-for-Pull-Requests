@@ -1,9 +1,9 @@
 import "dotenv/config";
 import path from "node:path";
 import process from "node:process";
-import pino from "pino";
 import { ConfigError, loadLlmConfig } from "../config.js";
 import {
+  canSaveBaseline,
   compareSnapshots,
   createBaseline,
   loadBaseline,
@@ -188,7 +188,6 @@ function printReport(
     }`,
   );
   for (const bucket of report.calibration.buckets) {
-    if (bucket.total === 0 || bucket.precision === null) continue;
     console.log(
       `  ${bucket.label}  n=${String(bucket.total).padStart(2)}  precision ${(
         bucket.precision * 100
@@ -264,11 +263,9 @@ async function main(): Promise<void> {
     {
       casesDir: options.casesDir,
       anthropic,
-      review: { maxDiffChars: config.review.maxDiffChars },
-      semgrep: config.semgrep,
+      maxDiffChars: config.review.maxDiffChars,
+      semgrep: { ...config.semgrep, enabled: options.semgrep },
       threshold: options.threshold ?? config.review.confidenceThreshold,
-      semgrepEnabled: options.semgrep,
-      logger: pino({ level: process.env.LOG_LEVEL ?? "silent" }),
       onCaseStart: (name, index, total) => {
         process.stderr.write(`[${index}/${total}] ${name}\n`);
       },
@@ -279,13 +276,13 @@ async function main(): Promise<void> {
   const previous = await loadBaseline(options.baselinePath);
   const snapshot = createBaseline(report);
   const comparison = previous ? compareSnapshots(snapshot, previous) : null;
-  const baselineSaved = options.saveBaseline && report.modelFailures === 0;
+  const baselineSaved = options.saveBaseline && canSaveBaseline(report);
 
   if (baselineSaved) {
     await saveBaseline(options.baselinePath, snapshot);
   } else if (options.saveBaseline) {
     process.stderr.write(
-      `Baseline not saved: ${report.modelFailures} case(s) failed to reach the model.\n`,
+      `Baseline not saved: ${report.failedModelBatches} model batch(es) failed.\n`,
     );
   }
 

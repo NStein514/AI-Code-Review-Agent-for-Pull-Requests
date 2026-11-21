@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  canSaveBaseline,
   compareSnapshots,
   createBaseline,
   loadBaseline,
@@ -37,10 +38,8 @@ function report(overrides: Partial<EvalReport> = {}): EvalReport {
         merged,
         llm: merged,
         semgrep: null,
-        semgrepAvailable: false,
         severityBelowFloor: 0,
         usage: { inputTokens: 10, outputTokens: 5 },
-        durationMs: 25,
         misses: [],
         falsePositives: [],
       },
@@ -58,13 +57,18 @@ function report(overrides: Partial<EvalReport> = {}): EvalReport {
     },
     usage: { inputTokens: 10, outputTokens: 5 },
     durationMs: 100,
-    modelFailures: 0,
+    failedModelBatches: 0,
     warnings: [],
     ...overrides,
   };
 }
 
 describe("baseline snapshots", () => {
+  it("refuses a baseline when any model batch failed", () => {
+    expect(canSaveBaseline(report())).toBe(true);
+    expect(canSaveBaseline(report({ failedModelBatches: 1 }))).toBe(false);
+  });
+
   it("captures aggregate, per-case and calibration values", () => {
     const snapshot = createBaseline(report());
 
@@ -100,10 +104,8 @@ describe("baseline snapshots", () => {
             merged: improvedCase,
             llm: improvedCase,
             semgrep: null,
-            semgrepAvailable: false,
             severityBelowFloor: 0,
             usage: { inputTokens: 10, outputTokens: 5 },
-            durationMs: 20,
             misses: [],
             falsePositives: [],
           },

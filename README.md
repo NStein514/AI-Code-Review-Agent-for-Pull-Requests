@@ -203,7 +203,7 @@ The report includes:
 - expected calibration error and precision per confidence bucket, computed over **all** raw findings, not only those above the threshold
 - token usage and wall-clock time
 
-Each run compares against the saved baseline and writes the new snapshot, so prompt, model, or threshold changes show up as deltas. A baseline is never overwritten when a case could not reach the model. Commit the baseline once a run looks trustworthy. Evaluation calls the live API, so it belongs in manual or nightly work; CI never needs a key. Matching and scoring are unit tested, and the runner is tested offline with an injected analyzer.
+Each run compares against the saved baseline and writes the new snapshot, so prompt, model, or threshold changes show up as deltas. A baseline is never written when any model batch fails, so an API hiccup cannot silently replace good numbers with zeros. Commit the baseline once a run looks trustworthy. Evaluation calls the live API, so it belongs in manual or nightly work; CI never needs a key. Matching and scoring are unit tested, and the runner is tested offline with an injected analyzer.
 
 ## Confidence scoring
 
@@ -289,7 +289,7 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 ## Testing
 
 ```bash
-npm test          # 83 tests: unit + integration
+npm test          # 84 tests: unit + integration
 npm run typecheck
 npm run build
 ```

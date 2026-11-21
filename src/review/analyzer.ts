@@ -48,6 +48,8 @@ export interface AnalyzeResult {
   usage: TokenUsage;
   batches: number;
   failedBatches: number;
+  /** Individual model calls that failed, including recovered truncations. */
+  failedModelCalls: number;
   /** Top-level batches whose first attempt hit the output token limit. */
   truncatedBatches: number;
 }
@@ -76,6 +78,7 @@ interface BatchOutcome {
   errors: string[];
   usage: TokenUsage;
   failed: boolean;
+  failedCalls: number;
   truncated: boolean;
 }
 
@@ -167,6 +170,7 @@ export class ReviewerAnalyzer {
     const errors: string[] = [];
     const usage = emptyUsage();
     let failedBatches = 0;
+    let failedModelCalls = 0;
     let truncatedBatches = 0;
 
     for (const [index, batch] of batches.entries()) {
@@ -187,6 +191,7 @@ export class ReviewerAnalyzer {
       usage.inputTokens += outcome.usage.inputTokens;
       usage.outputTokens += outcome.usage.outputTokens;
       if (outcome.failed) failedBatches += 1;
+      failedModelCalls += outcome.failedCalls;
       if (outcome.truncated) truncatedBatches += 1;
     }
 
@@ -197,6 +202,7 @@ export class ReviewerAnalyzer {
       usage,
       batches: batches.length,
       failedBatches,
+      failedModelCalls,
       truncatedBatches,
     };
   }
@@ -220,6 +226,7 @@ export class ReviewerAnalyzer {
         errors: [],
         usage: emptyUsage(),
         failed: false,
+        failedCalls: 0,
         truncated: false,
       };
     }
@@ -261,6 +268,7 @@ export class ReviewerAnalyzer {
         errors: [`model request failed: ${message}`],
         usage: emptyUsage(),
         failed: true,
+        failedCalls: 1,
         truncated: false,
       };
     }
@@ -284,6 +292,7 @@ export class ReviewerAnalyzer {
           errors: [...left.errors, ...right.errors],
           usage: addUsage(response.usage, left.usage, right.usage),
           failed: left.failed && right.failed,
+          failedCalls: 1 + left.failedCalls + right.failedCalls,
           truncated: true,
         };
       }
@@ -300,6 +309,7 @@ export class ReviewerAnalyzer {
         return {
           ...retry,
           usage: addUsage(response.usage, retry.usage),
+          failedCalls: 1 + retry.failedCalls,
           truncated: true,
         };
       }
@@ -312,6 +322,7 @@ export class ReviewerAnalyzer {
         ],
         usage: response.usage,
         failed: true,
+        failedCalls: 1,
         truncated: true,
       };
     }
@@ -323,6 +334,7 @@ export class ReviewerAnalyzer {
         errors: ["model did not call submit_findings"],
         usage: response.usage,
         failed: true,
+        failedCalls: 1,
         truncated: false,
       };
     }
@@ -334,6 +346,7 @@ export class ReviewerAnalyzer {
       errors: parsed.issues,
       usage: response.usage,
       failed: false,
+      failedCalls: 0,
       truncated: false,
     };
   }

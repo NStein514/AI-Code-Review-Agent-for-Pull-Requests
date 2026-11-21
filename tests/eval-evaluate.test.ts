@@ -56,6 +56,7 @@ const analyze = vi.fn(async (input: AnalyzeInput): Promise<AnalyzeResult> => {
     usage: { inputTokens: 10, outputTokens: 5 },
     batches: 1,
     failedBatches: 0,
+    failedModelCalls: 0,
     truncatedBatches: 0,
   };
 });
@@ -65,7 +66,7 @@ function run(threshold: number) {
     {
       casesDir: root,
       anthropic: { apiKey: "test-key", model: "test-model", maxTokens: 2048 },
-      review: { maxDiffChars: 10_000 },
+      maxDiffChars: 10_000,
       semgrep: {
         enabled: false,
         config: "unused",
@@ -73,7 +74,6 @@ function run(threshold: number) {
         maxFileBytes: 10_000,
       },
       threshold,
-      semgrepEnabled: false,
     },
     { createAnalyzer: () => ({ analyze }) },
   );
@@ -124,7 +124,7 @@ describe("evaluate", () => {
     expect(report.aggregate.semgrep).toBeNull();
     expect(report.aggregate.semgrepCases).toBe(0);
     expect(report.usage).toEqual({ inputTokens: 20, outputTokens: 10 });
-    expect(report.modelFailures).toBe(0);
+    expect(report.failedModelBatches).toBe(0);
     expect(report.calibration.total).toBe(1);
     expect(report.calibration.expectedCalibrationError).toBeCloseTo(0.1, 5);
   });
@@ -135,8 +135,9 @@ describe("evaluate", () => {
       summaries: [],
       errors: ["model request failed: unauthorized"],
       usage: { inputTokens: 0, outputTokens: 0 },
-      batches: 1,
+      batches: 2,
       failedBatches: 1,
+      failedModelCalls: 1,
       truncatedBatches: 0,
     }));
 
@@ -144,7 +145,7 @@ describe("evaluate", () => {
       {
         casesDir: root,
         anthropic: { apiKey: "test-key", model: "test-model", maxTokens: 2048 },
-        review: { maxDiffChars: 10_000 },
+        maxDiffChars: 10_000,
         semgrep: {
           enabled: false,
           config: "unused",
@@ -152,12 +153,11 @@ describe("evaluate", () => {
           maxFileBytes: 10_000,
         },
         threshold: 0.6,
-        semgrepEnabled: false,
       },
       { createAnalyzer: () => ({ analyze: failing }) },
     );
 
-    expect(report.modelFailures).toBe(2);
+    expect(report.failedModelBatches).toBe(2);
   });
 
   it("applies the confidence threshold to posted metrics but not calibration", async () => {

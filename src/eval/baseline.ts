@@ -17,7 +17,6 @@ export interface BaselineSnapshot {
 
 export interface BaselineComparison {
   baselineGeneratedAt: string;
-  baselineModel: string;
   precisionDelta: number;
   recallDelta: number;
   f1Delta: number;
@@ -39,6 +38,11 @@ export function createBaseline(report: EvalReport): BaselineSnapshot {
       report.cases.map((entry) => [entry.name, entry.merged]),
     ),
   };
+}
+
+/** A baseline is only trustworthy when every model batch completed. */
+export function canSaveBaseline(report: EvalReport): boolean {
+  return report.failedModelBatches === 0;
 }
 
 /** Compares current aggregate metrics with a saved baseline. */
@@ -68,7 +72,6 @@ export function compareSnapshots(
 
   return {
     baselineGeneratedAt: baseline.generatedAt,
-    baselineModel: baseline.model,
     precisionDelta: current.merged.precision - baseline.merged.precision,
     recallDelta: current.merged.recall - baseline.merged.recall,
     f1Delta: current.merged.f1 - baseline.merged.f1,
