@@ -43,7 +43,8 @@ export class ReviewQueue {
   }
 
   get size(): number {
-    return this.running + this.pending.size;
+    // A rerun is queued work even though it only starts after the active job.
+    return this.running + this.pending.size + this.rerun.size;
   }
 
   get activeCount(): number {

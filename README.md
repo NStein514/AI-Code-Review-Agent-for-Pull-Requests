@@ -39,7 +39,7 @@ and one summary review:
 2. The server verifies the HMAC-SHA256 signature, acknowledges in milliseconds, and queues the review.
 3. The reviewer fetches the PR and changed files, then parses each unified diff into hunks with exact head-side line numbers.
 4. Changed source files are fetched and scanned with Semgrep. Missing CLI or broken rules degrade gracefully.
-5. Claude reviews batches of annotated diffs with **forced tool use**, returning findings through a JSON schema instead of prose.
+5. Claude reviews batches of annotated diffs with **forced tool use**, returning findings through a JSON schema instead of prose. If the response is cut off by the output token limit, the partial payload is discarded: multi-file batches are split in half and a single file is retried with a larger budget.
 6. Every finding is validated against the diff: the path must exist, the line must be visible on the head side (nearby lines snap within three rows), and quoted evidence must match.
 7. Confidence is adjusted: corroborated findings are raised, unverifiable evidence lowers confidence and drops the suggestion.
 8. Findings below `REVIEW_CONFIDENCE_THRESHOLD` are withheld from inline comments and listed in the summary. The rest are posted as a single review with inline comments and GitHub suggestion blocks.
@@ -72,11 +72,11 @@ src/
   config.ts             zod-validated environment configuration
   logger.ts             pino logger
   github/
-    app.ts              cached GitHub App installation clients
+    app.ts              cached installation clients with retry/throttling
     diff.ts             unified-diff parsing and line mapping
     contents.ts         head-revision file contents for Semgrep
   review/
-    reviewer.ts         orchestration and posting
+    reviewer.ts         orchestration, posting, and test seams
     analyzer.ts         Claude tool-use client with batching
     prompt.ts           system/user prompts and diff budgeting
     tools.ts            submit_findings tool schema
@@ -87,7 +87,7 @@ src/
     review-diff.ts      local dry run against a saved diff
 semgrep/rules.yml       local baseline rules (no network required)
 fixtures/               sample diff and demo source tree
-tests/                  unit tests for the pure logic
+tests/                  unit and integration tests (mocked GitHub + Anthropic)
 ```
 
 ## Quickstart
@@ -230,21 +230,21 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 - Rotate the GitHub App private key and Anthropic key on a schedule.
 - Behind a proxy, preserve raw request bodies for webhook signature verification; this app reads the raw buffer itself.
 - Fork pull requests are skipped by default because the model and Semgrep would run on untrusted code.
-- GitHub rate limits are retried only by the Anthropic SDK; add Octokit throttling/retry plugins if you review a large org.
+- GitHub requests use Octokit retry and throttling plugins: transient 5xx errors retry three times, and primary/secondary rate limits wait for the reset window with bounded retries.
 
 ## Limitations and next steps
 
 - Findings are limited to lines visible in the current diff, so the model cannot comment on untouched files.
 - Very large PRs are capped by file count, patch size, and diff characters; skipped files are listed in the summary.
 - There is no incremental review on force-push: each new head commit is reviewed in full.
-- Natural next steps: a Redis-backed queue for horizontal scaling, Octokit retry/throttling plugins, per-repository configuration files, and storing review history for evaluation against Semgrep.
+- Natural next steps: a Redis-backed queue for horizontal scaling, per-repository configuration files, an evaluation harness for LLM-versus-Semgrep precision, and review-history storage.
 
 ## Testing
 
 ```bash
-npm test          # 49 unit tests: diff mapping, validation, scoring, prompts, webhooks
+npm test          # 60 tests: unit + integration
 npm run typecheck
 npm run build
 ```
 
-The tests cover the pure logic: unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, and webhook signature/job extraction.
+The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, and webhook signature/job extraction. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, and queue rerun coalescing.

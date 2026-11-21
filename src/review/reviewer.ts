@@ -1,11 +1,16 @@
 import type { Octokit } from "@octokit/rest";
 import type { Logger } from "pino";
-import type { AppConfig } from "../config.js";
+import type { AppConfig, GitHubConfig } from "../config.js";
 import { installationClient } from "../github/app.js";
 import { fetchSourceFiles } from "../github/contents.js";
 import { parseFilePatch, type FileDiff } from "../github/diff.js";
 import type { Finding, PullRequestOutcome } from "../types.js";
-import { ReviewerAnalyzer } from "./analyzer.js";
+import {
+  ReviewerAnalyzer,
+  type AnalyzeInput,
+  type AnalyzeResult,
+  type AnalyzerOptions,
+} from "./analyzer.js";
 import {
   capFindings,
   dedupeFindings,
@@ -30,6 +35,21 @@ export interface ReviewJob {
   /** Head SHA from the webhook; the reviewer re-reads the current head. */
   headSha: string;
   action: string;
+}
+
+export interface AnalyzerLike {
+  analyze(input: AnalyzeInput): Promise<AnalyzeResult>;
+}
+
+/** Optional seams used by integration tests. */
+export interface ReviewerDependencies {
+  getOctokit?: (
+    credentials: Pick<GitHubConfig, "appId" | "privateKey">,
+    installationId: number,
+    logger?: Logger,
+  ) => Octokit;
+  createAnalyzer?: (options: AnalyzerOptions) => AnalyzerLike;
+  runSemgrep?: typeof runSemgrep;
 }
 
 export interface PullRequestFile {
@@ -178,9 +198,11 @@ export async function reviewPullRequest(
   config: AppConfig,
   job: ReviewJob,
   log: Logger,
+  deps: ReviewerDependencies = {},
 ): Promise<PullRequestOutcome> {
   const startedAt = Date.now();
-  const octokit = installationClient(config.github, job.installationId);
+  const getOctokit = deps.getOctokit ?? installationClient;
+  const octokit = getOctokit(config.github, job.installationId, log);
   const params = {
     owner: job.owner,
     repo: job.repo,
@@ -252,7 +274,7 @@ export async function reviewPullRequest(
         maxFileBytes: config.semgrep.maxFileBytes,
       });
 
-      const run = await runSemgrep({
+      const run = await (deps.runSemgrep ?? runSemgrep)({
         files: fetched.files,
         config: config.semgrep.config,
         timeoutMs: config.semgrep.timeoutMs,
@@ -279,7 +301,10 @@ export async function reviewPullRequest(
       );
     }
 
-    const analyzer = new ReviewerAnalyzer({
+    const createAnalyzer =
+      deps.createAnalyzer ??
+      ((options: AnalyzerOptions) => new ReviewerAnalyzer(options));
+    const analyzer = createAnalyzer({
       ...config.anthropic,
       maxDiffChars: config.review.maxDiffChars,
       logger: log,
@@ -314,6 +339,7 @@ export async function reviewPullRequest(
       {
         batches: analysis.batches,
         failedBatches: analysis.failedBatches,
+        truncatedBatches: analysis.truncatedBatches,
         files: reviewable.length,
         findings: analysis.findings.length,
         inputTokens: analysis.usage.inputTokens,
