@@ -65,6 +65,63 @@ export function installationClient(
   return client;
 }
 
+export interface TokenClientOptions {
+  logger?: Logger;
+  /** GitHub Enterprise Server API base, e.g. https://ghe.example/api/v3. */
+  baseUrl?: string;
+}
+
+/**
+ * A token-authenticated client for CI jobs and local runs. It uses the same
+ * retry/throttling behavior as installation clients but does not require a
+ * GitHub App id, private key, or installation.
+ */
+export function tokenClient(
+  token: string,
+  options: TokenClientOptions = {},
+): Octokit {
+  const value = token.trim();
+  if (value.length === 0) {
+    throw new Error("A GitHub token is required for token mode");
+  }
+
+  return new AppOctokit({
+    auth: value,
+    userAgent: "ai-code-review-agent/0.1",
+    ...(options.baseUrl
+      ? { baseUrl: options.baseUrl.replace(/\/+$/, "") }
+      : {}),
+    request: { timeout: 30_000 },
+    retry: { retries: 3 },
+    throttle: {
+      onRateLimit: (retryAfter, requestOptions, _octokit, retryCount) => {
+        options.logger?.warn(
+          {
+            method: requestOptions.method,
+            url: requestOptions.url,
+            retryAfterSeconds: retryAfter,
+            retryCount,
+          },
+          "GitHub primary rate limit reached",
+        );
+        return retryCount < 2;
+      },
+      onSecondaryRateLimit: (retryAfter, requestOptions, _octokit, retryCount) => {
+        options.logger?.warn(
+          {
+            method: requestOptions.method,
+            url: requestOptions.url,
+            retryAfterSeconds: retryAfter,
+            retryCount,
+          },
+          "GitHub secondary rate limit reached",
+        );
+        return retryCount < 2;
+      },
+    },
+  });
+}
+
 export function resetInstallationClients(): void {
   installationClients.clear();
 }

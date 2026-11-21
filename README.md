@@ -65,6 +65,9 @@ GitHub webhook ──▶ Express (signature check) ──▶ ReviewQueue
 ## Project layout
 
 ```
+action.yml              composite action for token mode
+examples/
+  github-actions/ai-review.yml
 src/
   index.ts              entrypoint, graceful shutdown
   server.ts             Express app, webhook verification, event routing
@@ -85,6 +88,8 @@ src/
     summary.ts          review/comment formatting and markers
   cli/
     review-diff.ts      local dry run against a saved diff
+    review-pr.ts        token-mode entrypoint (GitHub Actions or local)
+    review-pr-command.ts CLI parsing and token-mode orchestration
   eval/
     run.ts              npm run eval CLI and reporting
     evaluate.ts         live-model evaluation over labeled cases
@@ -97,6 +102,8 @@ tests/                  unit and integration tests (mocked GitHub + Anthropic)
 ```
 
 ## Quickstart
+
+A GitHub App is the right choice for organization-wide, always-on reviews. If you only need reviews for one repository, the GitHub Actions mode below needs no server and no App.
 
 ### 1. Create the GitHub App
 
@@ -147,6 +154,45 @@ semgrep --validate --config semgrep/rules.yml
 ```
 
 The app calls the `semgrep` binary if it is on `PATH`. Without it, reviews still run and the summary reports `Semgrep baseline: unavailable`.
+
+## GitHub Actions (no server)
+
+The same reviewer can run as a one-shot GitHub Action with `GITHUB_TOKEN`. No GitHub App, webhook URL, public server, or queue is needed.
+
+Copy [`examples/github-actions/ai-review.yml`](examples/github-actions/ai-review.yml) to `.github/workflows/ai-review.yml`, replace `your-org/ai-code-review-agent@v1` with the repository and ref that contains `action.yml`, and add `ANTHROPIC_API_KEY` as a repository secret. The workflow needs:
+
+```yaml
+permissions:
+  contents: read
+  pull-requests: write
+```
+
+The example runs only for same-repository, non-draft pull requests. Fork PRs receive a read-only token and are skipped by default; to review them, use `pull_request_target` deliberately and set `REVIEW_REVIEW_FORKS=true`.
+
+### Action inputs
+
+| Input | Required | Default | Purpose |
+| --- | --- | --- | --- |
+| `github-token` | yes | — | Token with `pull-requests: write` |
+| `anthropic-api-key` | yes | — | Anthropic API key |
+| `model` | no | `ANTHROPIC_MODEL` | Model override |
+| `threshold` | no | `REVIEW_CONFIDENCE_THRESHOLD` | Inline comment cutoff |
+| `semgrep` | no | `true` | Install and run Semgrep |
+
+The action installs dependencies, builds the reviewer, and runs it for the PR that triggered the workflow. It expects a `pull_request` event. It never checks out or executes PR code. Semgrep is installed with `pip` on the runner; if installation fails, the review continues without it and the summary reports it as unavailable. Set `semgrep: "false"` to skip it. The composite action targets Unix runners such as `ubuntu-latest`. Pin a tag or commit for reproducible builds.
+
+### Run it locally against a real PR
+
+```bash
+GITHUB_TOKEN=... ANTHROPIC_API_KEY=... \
+  npm run review:pr -- --repo acme/api --pr 42
+```
+
+`--pr` accepts a number or a full pull request URL. Use `--threshold`, `--model`, `--no-semgrep`, and `--json` as needed. The command reads `GITHUB_REPOSITORY` and `PULL_REQUEST_NUMBER` when the flags are omitted, and honors `GITHUB_API_URL` for GitHub Enterprise Server.
+
+Exit codes: `0` reviewed or skipped, `1` review failed or configuration was invalid, `2` bad arguments. Re-running for a commit that already has the review marker is skipped, so retries do not duplicate comments.
+
+The token needs `pull-requests: write` and `contents: read`. The default `GITHUB_TOKEN` is enough for same-repository PRs; fork PRs receive a read-only token.
 
 ## Local dry run
 
@@ -246,6 +292,8 @@ Suggestions are only posted when the quoted evidence was verified, and they are 
 | `REVIEW_SUMMARY_ON_CLEAN` | `true` | Post "no issues found" summaries |
 | `REVIEW_TRIGGER_ACTIONS` | `opened,reopened,synchronize,ready_for_review` | Handled PR actions |
 | `REVIEW_CUSTOM_INSTRUCTIONS` | — | Extra maintainer rules appended to the prompt |
+| `GITHUB_TOKEN` / `GH_TOKEN` | — | Token-mode CLI and GitHub Action |
+| `GITHUB_API_URL` | GitHub default | API base URL; set automatically on Actions and GHES |
 | `SEMGREP_ENABLED` | `true` | Run the static-analysis baseline |
 | `SEMGREP_CONFIG` | `./semgrep/rules.yml` | Local path, or `auto` / `p/security-audit` |
 | `SEMGREP_TIMEOUT_MS` | `120000` | CLI timeout |
@@ -277,6 +325,7 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 - Rotate the GitHub App private key and Anthropic key on a schedule.
 - Behind a proxy, preserve raw request bodies for webhook signature verification; this app reads the raw buffer itself.
 - Fork pull requests are skipped by default because the model and Semgrep would run on untrusted code.
+- GitHub Action mode reviews one pull request per job and has no webhook queue; repeated runs for the same commit are skipped by the review marker.
 - GitHub requests use Octokit retry and throttling plugins: transient 5xx errors retry three times, and primary/secondary rate limits wait for the reset window with bounded retries.
 
 ## Limitations and next steps
@@ -289,9 +338,9 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 ## Testing
 
 ```bash
-npm test          # 84 tests: unit + integration
+npm test          # 95 tests: unit + integration
 npm run typecheck
 npm run build
 ```
 
-The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, webhook handling, strict eval matching, P/R/F1 edge cases, calibration math, fixture validation, and baseline deltas. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, queue rerun coalescing, and the evaluation pipeline with an injected analyzer.
+The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, webhook handling, token-client authentication, token-mode CLI parsing, strict eval matching, P/R/F1 edge cases, calibration math, fixture validation, and baseline deltas. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, queue rerun coalescing, token-mode orchestration without GitHub App credentials, and the evaluation pipeline with an injected analyzer.

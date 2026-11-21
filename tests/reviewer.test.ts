@@ -49,6 +49,20 @@ const job: ReviewJob = {
   action: "opened",
 };
 
+const tokenConfig = {
+  anthropic: config.anthropic,
+  review: config.review,
+  semgrep: config.semgrep,
+};
+
+const tokenJob: ReviewJob = {
+  owner: "acme",
+  repo: "api",
+  pullNumber: 7,
+  headSha: "",
+  action: "manual",
+};
+
 function pullRequestResponse() {
   return {
     number: 7,
@@ -228,5 +242,27 @@ describe("reviewPullRequest posting", () => {
     expect(result.reason).toContain("already reviewed");
     expect(analyze).not.toHaveBeenCalled();
     expect(createReview).not.toHaveBeenCalled();
+  });
+
+  it("reviews with a supplied token client and no GitHub App configuration", async () => {
+    const { octokit, createReview } = buildFakeOctokit();
+    const analyze = vi.fn().mockResolvedValue(analyzerResult);
+
+    const result = await reviewPullRequest(tokenConfig, tokenJob, logger, {
+      octokit,
+      createAnalyzer: () => ({ analyze }),
+    });
+
+    expect(result.status).toBe("reviewed");
+    expect(result.posted).toBe(1);
+    expect(createReview).toHaveBeenCalledTimes(1);
+  });
+
+  it("requires GitHub App credentials when no client is supplied", async () => {
+    await expect(
+      reviewPullRequest(tokenConfig, tokenJob, logger, {
+        createAnalyzer: () => ({ analyze: vi.fn() }),
+      }),
+    ).rejects.toThrow("GitHub App credentials are required");
   });
 });

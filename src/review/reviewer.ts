@@ -1,6 +1,6 @@
 import type { Octokit } from "@octokit/rest";
 import type { Logger } from "pino";
-import type { AppConfig, GitHubConfig } from "../config.js";
+import type { GitHubConfig, LlmShellConfig } from "../config.js";
 import { installationClient } from "../github/app.js";
 import { fetchSourceFiles } from "../github/contents.js";
 import { parseFilePatch, type FileDiff } from "../github/diff.js";
@@ -26,8 +26,11 @@ import {
   serializeFindingsAsText,
 } from "./summary.js";
 
+export type ReviewRuntimeConfig = LlmShellConfig & { github?: GitHubConfig };
+
 export interface ReviewJob {
-  installationId: number;
+  /** GitHub App installation; omitted in token mode. */
+  installationId?: number;
   owner: string;
   repo: string;
   pullNumber: number;
@@ -38,6 +41,8 @@ export interface ReviewJob {
 
 /** Optional seams used by integration tests. */
 export interface ReviewerDependencies {
+  /** Prebuilt client, used by token mode and tests. Skips GitHub App auth. */
+  octokit?: Octokit;
   getOctokit?: (
     credentials: Pick<GitHubConfig, "appId" | "privateKey">,
     installationId: number,
@@ -60,6 +65,27 @@ export interface PullRequestFile {
 type CreateReviewParams = NonNullable<
   Parameters<Octokit["rest"]["pulls"]["createReview"]>[0]
 >;
+
+function installationOctokit(
+  config: ReviewRuntimeConfig,
+  job: ReviewJob,
+  deps: ReviewerDependencies,
+  log: Logger,
+): Octokit {
+  if (!config.github) {
+    throw new Error(
+      "GitHub App credentials are required unless a token client is supplied",
+    );
+  }
+  if (job.installationId === undefined) {
+    throw new Error("installationId is required for GitHub App authentication");
+  }
+  return (deps.getOctokit ?? installationClient)(
+    config.github,
+    job.installationId,
+    log,
+  );
+}
 
 /** Lockfiles, generated output, vendored code and binaries are not worth reviewing. */
 const IGNORED_PATHS: RegExp[] = [
@@ -190,14 +216,13 @@ async function postReview(
 }
 
 export async function reviewPullRequest(
-  config: AppConfig,
+  config: ReviewRuntimeConfig,
   job: ReviewJob,
   log: Logger,
   deps: ReviewerDependencies = {},
 ): Promise<PullRequestOutcome> {
   const startedAt = Date.now();
-  const getOctokit = deps.getOctokit ?? installationClient;
-  const octokit = getOctokit(config.github, job.installationId, log);
+  const octokit = deps.octokit ?? installationOctokit(config, job, deps, log);
   const params = {
     owner: job.owner,
     repo: job.repo,

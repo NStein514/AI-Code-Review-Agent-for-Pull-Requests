@@ -8,7 +8,7 @@ export interface ReviewQueueOptions {
 }
 
 export function jobKey(job: ReviewJob): string {
-  return `${job.installationId}:${job.owner}/${job.repo}#${job.pullNumber}`;
+  return `${job.installationId ?? "token"}:${job.owner}/${job.repo}#${job.pullNumber}`;
 }
 
 /**

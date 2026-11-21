@@ -1,0 +1,32 @@
+name: AI code review
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: ai-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    # Same-repository PRs only. Fork PRs receive a read-only token and are
+    # skipped by the reviewer by default; see the README to opt in.
+    if: >-
+      github.event.pull_request.draft == false &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      # Replace with the repository and ref that contains action.yml.
+      - uses: your-org/ai-code-review-agent@v1
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          anthropic-api-key: ${{ secrets.ANTHROPIC_API_KEY }}
+          # model: claude-sonnet-5-5
+          # threshold: "0.6"
+          # semgrep: "false"

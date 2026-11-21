@@ -1,0 +1,83 @@
+name: AI Code Review
+description: Review a pull request with Claude and post confidence-scored inline findings.
+author: ai-code-review-agent
+branding:
+  icon: search
+  color: purple
+
+inputs:
+  github-token:
+    description: Token with pull-requests write access. Use secrets.GITHUB_TOKEN.
+    required: true
+  anthropic-api-key:
+    description: Anthropic API key.
+    required: true
+  model:
+    description: Override ANTHROPIC_MODEL.
+    required: false
+    default: ""
+  threshold:
+    description: Confidence cutoff between 0 and 1.
+    required: false
+    default: ""
+  semgrep:
+    description: Install and run the Semgrep baseline. Set to false to skip it.
+    required: false
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v4
+      with:
+        node-version: "22"
+
+    - name: Install reviewer dependencies
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm ci --include=dev --no-audit --no-fund
+
+    - name: Build reviewer
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      run: npm run build
+
+    - name: Set up Python for Semgrep
+      if: inputs.semgrep == 'true'
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install Semgrep
+      if: inputs.semgrep == 'true'
+      shell: bash
+      run: python -m pip install --user semgrep || echo "Semgrep install failed; continuing without the static-analysis baseline"
+
+    - name: Add Semgrep to PATH
+      if: inputs.semgrep == 'true'
+      shell: bash
+      run: echo "$(python -m site --user-base)/bin" >> "$GITHUB_PATH"
+
+    - name: Review pull request
+      shell: bash
+      working-directory: ${{ github.action_path }}
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        ANTHROPIC_API_KEY: ${{ inputs.anthropic-api-key }}
+        INPUT_MODEL: ${{ inputs.model }}
+        INPUT_THRESHOLD: ${{ inputs.threshold }}
+        INPUT_SEMGREP: ${{ inputs.semgrep }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        LOG_PRETTY: "false"
+      run: |
+        args=(--repo "$GITHUB_REPOSITORY" --pr "$PR_NUMBER")
+        if [ -n "$INPUT_MODEL" ]; then
+          args+=(--model "$INPUT_MODEL")
+        fi
+        if [ -n "$INPUT_THRESHOLD" ]; then
+          args+=(--threshold "$INPUT_THRESHOLD")
+        fi
+        if [ "$INPUT_SEMGREP" = "false" ]; then
+          args+=(--no-semgrep)
+        fi
+        node dist/cli/review-pr.js "${args[@]}"
