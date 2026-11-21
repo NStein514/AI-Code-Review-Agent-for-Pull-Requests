@@ -1,0 +1,13 @@
+{
+  "title": "Adjust page slicing",
+  "description": "Changes the end index used for pagination.",
+  "expected": [
+    {
+      "path": "src/pagination.ts",
+      "line": 3,
+      "category": "bug",
+      "minSeverity": "medium",
+      "note": "The slice now returns size + 1 items, so pages overlap and the last page can overflow."
+    }
+  ]
+}

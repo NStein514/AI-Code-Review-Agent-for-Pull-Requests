@@ -1,0 +1,13 @@
+{
+  "title": "Persist withdrawals",
+  "description": "Writes the new balance and records the withdrawal after the balance check.",
+  "expected": [
+    {
+      "path": "src/withdraw.ts",
+      "line": 6,
+      "category": "bug",
+      "minSeverity": "high",
+      "note": "Concurrent withdrawals can pass the same balance check and overdraw the account."
+    }
+  ]
+}

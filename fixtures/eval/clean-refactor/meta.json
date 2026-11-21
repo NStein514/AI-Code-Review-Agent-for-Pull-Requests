@@ -1,0 +1,5 @@
+{
+  "title": "Rename add to sum",
+  "description": "Renames a helper and bumps the package version. No behavior changes.",
+  "expected": []
+}

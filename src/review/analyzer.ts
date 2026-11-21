@@ -52,6 +52,10 @@ export interface AnalyzeResult {
   truncatedBatches: number;
 }
 
+export interface AnalyzerLike {
+  analyze(input: AnalyzeInput): Promise<AnalyzeResult>;
+}
+
 export interface AnalyzerOptions {
   apiKey: string;
   model: string;

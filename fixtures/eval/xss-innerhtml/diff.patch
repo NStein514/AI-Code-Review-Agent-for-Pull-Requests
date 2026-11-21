@@ -1,0 +1,11 @@
+diff --git a/src/render.ts b/src/render.ts
+index 8b9c0d1..2e3f4a5 100644
+--- a/src/render.ts
++++ b/src/render.ts
+@@ -1,4 +1,5 @@
+ export function render(el: HTMLElement, query: string) {
+-  el.textContent = query;
++  el.innerHTML = query;
++  el.dataset.rendered = "true";
+   el.dataset.version = "1";
+ }

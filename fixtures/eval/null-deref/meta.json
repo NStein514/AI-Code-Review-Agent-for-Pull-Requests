@@ -1,0 +1,13 @@
+{
+  "title": "Return the user's display name",
+  "description": "Uses the profile name instead of a constant.",
+  "expected": [
+    {
+      "path": "src/users.ts",
+      "line": 3,
+      "category": "bug",
+      "minSeverity": "medium",
+      "note": "findUser may return null, and profile may be missing."
+    }
+  ]
+}

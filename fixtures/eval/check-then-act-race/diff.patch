@@ -1,0 +1,15 @@
+diff --git a/src/withdraw.ts b/src/withdraw.ts
+index 5e6f7a8..9b0c1d2 100644
+--- a/src/withdraw.ts
++++ b/src/withdraw.ts
+@@ -1,7 +1,9 @@
+ export async function withdraw(accountId: string, amount: number) {
+   const account = await db.getAccount(accountId);
+   if (account.balance < amount) {
+     throw new Error("insufficient funds");
+   }
+-  return account.balance;
++  await db.setBalance(accountId, account.balance - amount);
++  await db.recordWithdrawal(accountId, amount);
++  return account.balance - amount;
+ }

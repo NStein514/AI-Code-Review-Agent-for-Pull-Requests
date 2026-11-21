@@ -1,0 +1,13 @@
+diff --git a/src/math.test.ts b/src/math.test.ts
+index 1e2f3a4..5b6c7d8 100644
+--- a/src/math.test.ts
++++ b/src/math.test.ts
+@@ -1,5 +1,8 @@
+ import { describe, expect, it } from "vitest";
+ import { sum } from "../src/math.js";
+ 
+ describe("sum", () => {
++  it("adds two numbers", () => {
++    expect(sum(2, 3)).toBe(5);
++  });
+ });

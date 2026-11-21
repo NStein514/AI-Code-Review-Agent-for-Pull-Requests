@@ -1,0 +1,10 @@
+diff --git a/src/pagination.ts b/src/pagination.ts
+index 7a8b9c0..1d2e3f4 100644
+--- a/src/pagination.ts
++++ b/src/pagination.ts
+@@ -1,4 +1,4 @@
+ export function pageItems(items: string[], page: number, size: number) {
+   const start = page * size;
+-  return items.slice(start, start + size);
++  return items.slice(start, start + size + 1);
+ }

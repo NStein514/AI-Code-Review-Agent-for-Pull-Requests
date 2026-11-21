@@ -1,0 +1,14 @@
+diff --git a/src/files.ts b/src/files.ts
+index 3c4d5e6..7f8a9b0 100644
+--- a/src/files.ts
++++ b/src/files.ts
+@@ -1,4 +1,9 @@
+ import { readFile } from "node:fs/promises";
+ import path from "node:path";
+ 
++export async function download(req, res) {
++  const file = await readFile(path.join("/srv/uploads", req.query.name));
++  res.send(file);
++}
++
+ export const uploadDir = "/srv/uploads";

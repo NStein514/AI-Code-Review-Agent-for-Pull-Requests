@@ -1,0 +1,5 @@
+{
+  "title": "Add shutdown and log settings",
+  "description": "Adds a graceful-shutdown timeout and a log level constant.",
+  "expected": []
+}

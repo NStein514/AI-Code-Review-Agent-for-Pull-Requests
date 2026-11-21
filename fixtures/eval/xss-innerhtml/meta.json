@@ -1,0 +1,13 @@
+{
+  "title": "Render search query",
+  "description": "Switches the renderer from textContent to innerHTML.",
+  "expected": [
+    {
+      "path": "src/render.ts",
+      "line": 2,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Writing the query into innerHTML allows script injection."
+    }
+  ]
+}

@@ -1,0 +1,11 @@
+diff --git a/src/server-config.ts b/src/server-config.ts
+index 0d1e2f3..4a5b6c7 100644
+--- a/src/server-config.ts
++++ b/src/server-config.ts
+@@ -1,4 +1,6 @@
+ export const serverConfig = {
+   port: 3000,
+   requestTimeoutMs: 30_000,
++  shutdownGraceMs: 10_000,
++  logLevel: "info" as const,
+ };

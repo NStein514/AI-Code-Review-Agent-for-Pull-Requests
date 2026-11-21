@@ -14,7 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "review:diff": "tsx src/cli/review-diff.ts"
+    "review:diff": "tsx src/cli/review-diff.ts",
+    "eval": "tsx src/eval/run.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^1.12.0",

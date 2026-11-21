@@ -1,0 +1,10 @@
+diff --git a/src/users.ts b/src/users.ts
+index 4d5e6f7..8a9b0c1 100644
+--- a/src/users.ts
++++ b/src/users.ts
+@@ -1,4 +1,4 @@
+ export async function getUserName(id: string) {
+   const user = await db.findUser(id);
+-  return "anonymous";
++  return user.profile.name.trim();
+ }

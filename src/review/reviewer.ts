@@ -7,8 +7,7 @@ import { parseFilePatch, type FileDiff } from "../github/diff.js";
 import type { Finding, PullRequestOutcome } from "../types.js";
 import {
   ReviewerAnalyzer,
-  type AnalyzeInput,
-  type AnalyzeResult,
+  type AnalyzerLike,
   type AnalyzerOptions,
 } from "./analyzer.js";
 import {
@@ -35,10 +34,6 @@ export interface ReviewJob {
   /** Head SHA from the webhook; the reviewer re-reads the current head. */
   headSha: string;
   action: string;
-}
-
-export interface AnalyzerLike {
-  analyze(input: AnalyzeInput): Promise<AnalyzeResult>;
 }
 
 /** Optional seams used by integration tests. */

@@ -1,0 +1,20 @@
+{
+  "title": "Add user search endpoint",
+  "description": "Adds a search route and an admin API key to the users router.",
+  "expected": [
+    {
+      "path": "src/users.ts",
+      "line": 11,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Untrusted name is concatenated into the SQL text."
+    },
+    {
+      "path": "src/users.ts",
+      "line": 6,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Admin API key is committed to source."
+    }
+  ]
+}

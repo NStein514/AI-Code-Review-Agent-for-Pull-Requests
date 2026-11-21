@@ -1,0 +1,13 @@
+{
+  "title": "Expose admin user list",
+  "description": "Adds an admin listing route to the router.",
+  "expected": [
+    {
+      "path": "src/routes/admin.ts",
+      "line": 6,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "The route returns every user without checking authentication or role."
+    }
+  ]
+}

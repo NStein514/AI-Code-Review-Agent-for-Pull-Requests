@@ -1,0 +1,13 @@
+{
+  "title": "Add file download endpoint",
+  "description": "Adds a download helper that joins the upload directory with a query parameter.",
+  "expected": [
+    {
+      "path": "src/files.ts",
+      "line": 5,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "req.query.name can escape /srv/uploads with ../ sequences."
+    }
+  ]
+}

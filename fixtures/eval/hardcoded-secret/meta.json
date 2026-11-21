@@ -1,0 +1,20 @@
+{
+  "title": "Add payment settings",
+  "description": "Adds Stripe and webhook credentials to the runtime config.",
+  "expected": [
+    {
+      "path": "src/config.ts",
+      "line": 3,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Stripe secret key is committed."
+    },
+    {
+      "path": "src/config.ts",
+      "line": 4,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Webhook signing secret is committed."
+    }
+  ]
+}

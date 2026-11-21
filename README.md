@@ -85,8 +85,14 @@ src/
     summary.ts          review/comment formatting and markers
   cli/
     review-diff.ts      local dry run against a saved diff
+  eval/
+    run.ts              npm run eval CLI and reporting
+    evaluate.ts         live-model evaluation over labeled cases
+    cases.ts            fixture loader and label validation
+    metrics.ts          strict matching, P/R/F1, confidence calibration
+    baseline.ts         baseline snapshots and deltas
 semgrep/rules.yml       local baseline rules (no network required)
-fixtures/               sample diff and demo source tree
+fixtures/               sample diff, demo tree, and labeled eval cases
 tests/                  unit and integration tests (mocked GitHub + Anthropic)
 ```
 
@@ -157,6 +163,47 @@ npm run review:diff -- --diff fixtures/sql-injection.diff --dir fixtures/demo-re
 ```
 
 Useful flags: `--threshold 0.75`, `--no-semgrep`, `--json`. The dry run needs `ANTHROPIC_API_KEY` and never posts anything.
+
+## Evaluation
+
+`fixtures/eval` contains twelve labeled pull-request cases: nine with known defects (SQL injection, committed credentials, missing authorization, path traversal, null dereference, a check-then-act race, prompt injection in a comment, an off-by-one, and DOM XSS) and three clean changes that measure false positives.
+
+Each case is a directory with `diff.patch`, `meta.json`, and optionally a `repo/` tree for Semgrep:
+
+```text
+fixtures/eval/sql-injection/
+  diff.patch
+  meta.json
+  repo/src/users.ts
+```
+
+```json
+{
+  "title": "Add user search endpoint",
+  "expected": [
+    { "path": "src/users.ts", "line": 11, "category": "security", "minSeverity": "high" }
+  ]
+}
+```
+
+Matching is deliberately strict: same repository-relative path, same category, and a head-side line within ±2. Each prediction can match at most one label; leftovers become false positives, and unmatched labels become false negatives. A severity below a label's floor is reported separately but still counts as a detection.
+
+```bash
+export ANTHROPIC_API_KEY=...
+npm run eval                      # table output, writes fixtures/eval/baseline.json
+npm run eval -- --json            # full report for tooling
+npm run eval -- --threshold 0.75 --verbose
+npm run eval -- --no-semgrep --no-save-baseline
+```
+
+The report includes:
+
+- merged, LLM-only, and Semgrep-only precision / recall / F1, micro-averaged across cases
+- per-case counts plus missed labels and false positives
+- expected calibration error and precision per confidence bucket, computed over **all** raw findings, not only those above the threshold
+- token usage and wall-clock time
+
+Each run compares against the saved baseline and writes the new snapshot, so prompt, model, or threshold changes show up as deltas. A baseline is never overwritten when a case could not reach the model. Commit the baseline once a run looks trustworthy. Evaluation calls the live API, so it belongs in manual or nightly work; CI never needs a key. Matching and scoring are unit tested, and the runner is tested offline with an injected analyzer.
 
 ## Confidence scoring
 
@@ -237,14 +284,14 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 - Findings are limited to lines visible in the current diff, so the model cannot comment on untouched files.
 - Very large PRs are capped by file count, patch size, and diff characters; skipped files are listed in the summary.
 - There is no incremental review on force-push: each new head commit is reviewed in full.
-- Natural next steps: a Redis-backed queue for horizontal scaling, per-repository configuration files, an evaluation harness for LLM-versus-Semgrep precision, and review-history storage.
+- Natural next steps: growing the evaluation set and tuning the prompt and threshold from its results, a Redis-backed queue for horizontal scaling, per-repository configuration files, and review-history storage.
 
 ## Testing
 
 ```bash
-npm test          # 60 tests: unit + integration
+npm test          # 83 tests: unit + integration
 npm run typecheck
 npm run build
 ```
 
-The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, and webhook signature/job extraction. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, and queue rerun coalescing.
+The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, webhook handling, strict eval matching, P/R/F1 edge cases, calibration math, fixture validation, and baseline deltas. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, queue rerun coalescing, and the evaluation pipeline with an injected analyzer.
