@@ -2,7 +2,7 @@
 
 A GitHub App that reviews pull requests, flags bugs, security issues, and meaningful style problems, and posts **inline comments with suggested fixes**. Every finding carries a confidence score, and findings below the threshold are listed in the summary instead of being posted inline, so reviewers know what to trust.
 
-A deterministic [Semgrep](https://semgrep.dev) pass runs first as a baseline. Its findings are given to the model as context and merged into the output, so known-vulnerable patterns are reported even when the model misses them.
+A deterministic [Semgrep](https://semgrep.dev) pass runs first as a baseline. Its findings are given to the model as context and merged into the output, so known-vulnerable patterns are reported even when the model misses them. The model also receives a bounded window of unchanged head-revision source around each hunk, so it can verify guards, types, and constants before reporting.
 
 ## Example
 
@@ -38,13 +38,13 @@ and one summary review:
 1. GitHub sends a `pull_request` webhook (`opened`, `reopened`, `synchronize`, `ready_for_review`).
 2. The server verifies the HMAC-SHA256 signature, acknowledges in milliseconds, and queues the review.
 3. The reviewer fetches the PR and changed files, then parses each unified diff into hunks with exact head-side line numbers.
-4. Changed source files are fetched and scanned with Semgrep. Missing CLI or broken rules degrade gracefully.
+4. Changed source files are fetched once. Semgrep scans them, and a bounded, line-numbered window of unchanged head-revision source around each hunk is added to the model prompt as verification-only context. Lines already present in the diff are omitted from that window. Missing CLI or broken rules degrade gracefully.
 5. Claude reviews batches of annotated diffs with **forced tool use**, returning findings through a JSON schema instead of prose. If the response is cut off by the output token limit, the partial payload is discarded: multi-file batches are split in half and a single file is retried with a larger budget.
-6. Every finding is validated against the diff: the path must exist, the line must be visible on the head side (nearby lines snap within three rows), and quoted evidence must match.
+6. Every finding is validated against the diff: the path must exist, the line must be visible on the head side, and quoted evidence must match. Model findings anchored on verification-context or other unseen lines are rejected rather than snapped onto a nearby diff line, and inline comments remain limited to diff lines.
 7. Confidence is adjusted: corroborated findings are raised, unverifiable evidence lowers confidence and drops the suggestion.
 8. Findings below `REVIEW_CONFIDENCE_THRESHOLD` are withheld from inline comments and listed in the summary. The rest are posted as a single review with inline comments and GitHub suggestion blocks.
 
-A hidden marker (`<!-- ai-code-review:<sha> -->`) in the review body makes re-deliveries for the same commit idempotent.
+A hidden marker (`<!-- ai-code-review:<sha> -->`) in the review body makes re-deliveries for the same commit idempotent. The newest marker also drives incremental reviews: the next push compares the head with that SHA and analyzes only the files the pull request changed since then, discarding base-branch merges that also appear in the comparison. Model output is still validated against the full pull request diff. Earlier bot comments whose lines no longer exist are deleted, and findings already commented on at the same location are not posted again. If the reviewed SHA is no longer an ancestor (force-push or rebase) or the comparison fails, the reviewer falls back to a full review.
 
 ```
 GitHub webhook ──▶ Express (signature check) ──▶ ReviewQueue
@@ -202,17 +202,19 @@ Review a saved diff without GitHub, a webhook, or an installation:
 npm run review:diff -- --diff fixtures/sql-injection.diff
 ```
 
-With Semgrep over the matching demo tree:
+With Semgrep and review context over the matching demo tree:
 
 ```bash
 npm run review:diff -- --diff fixtures/sql-injection.diff --dir fixtures/demo-repo
 ```
 
+`--dir` supplies head-revision sources for both Semgrep and the model's verification context. With `--no-semgrep`, the static-analysis pass is skipped but `--dir` still enables context.
+
 Useful flags: `--threshold 0.75`, `--no-semgrep`, `--json`. The dry run needs `ANTHROPIC_API_KEY` and never posts anything.
 
 ## Evaluation
 
-`fixtures/eval` contains twelve labeled pull-request cases: nine with known defects (SQL injection, committed credentials, missing authorization, path traversal, null dereference, a check-then-act race, prompt injection in a comment, an off-by-one, and DOM XSS) and three clean changes that measure false positives.
+`fixtures/eval` contains sixteen pull-request cases: eleven with known defects (SQL injection, committed credentials, missing authorization, path traversal, null dereference, a check-then-act race, prompt injection in a comment, an off-by-one, DOM XSS, a wrong auth header, and a cache TTL unit bug) and five clean changes that measure false positives. Four cases are deliberately context-dependent: two defects and two clean changes require source above the hunk to judge correctly.
 
 Each case is a directory with `diff.patch`, `meta.json`, and optionally a `repo/` tree for Semgrep:
 
@@ -241,6 +243,15 @@ npm run eval -- --json            # full report for tooling
 npm run eval -- --threshold 0.75 --verbose
 npm run eval -- --no-semgrep --no-save-baseline
 ```
+
+Context is enabled by default. To compare it with the previous diff-only behavior, record a diff-only snapshot first and then run against it:
+
+```bash
+npm run eval -- --no-context --baseline fixtures/eval/baseline.diff-only.json
+npm run eval -- --baseline fixtures/eval/baseline.diff-only.json --no-save-baseline
+```
+
+The second command prints precision, recall, F1, and calibration deltas without overwriting the diff-only baseline. Omit `--no-save-baseline` and use the default baseline path to keep the context run as the new snapshot.
 
 The report includes:
 
@@ -285,6 +296,8 @@ Suggestions are only posted when the quoted evidence was verified, and they are 
 | `REVIEW_MAX_FILES` | `20` | Files analyzed per review |
 | `REVIEW_MAX_DIFF_CHARS` | `60000` | Diff budget per model call |
 | `REVIEW_MAX_FILE_PATCH_CHARS` | `24000` | Larger patches are skipped |
+| `REVIEW_CONTEXT_LINES` | `30` | Verification-only unchanged source lines on each side of a hunk; `0` disables context |
+| `REVIEW_MAX_CONTEXT_CHARS` | `12000` | Total context characters per prompt, shared fairly across files |
 | `REVIEW_MAX_FINDINGS` | `25` | Hard cap on inline comments |
 | `REVIEW_MAX_CONCURRENCY` | `2` | Concurrent PR reviews |
 | `REVIEW_SKIP_DRAFTS` | `true` | Ignore draft PRs |
@@ -331,16 +344,17 @@ docker build --target with-semgrep -t ai-code-review-agent:semgrep .
 ## Limitations and next steps
 
 - Findings are limited to lines visible in the current diff, so the model cannot comment on untouched files.
+- Verification context is bounded to a configurable window around each hunk; the model cannot see arbitrary callers or distant modules.
 - Very large PRs are capped by file count, patch size, and diff characters; skipped files are listed in the summary.
-- There is no incremental review on force-push: each new head commit is reviewed in full.
+- Force-pushes, rebases, and comparisons that GitHub cannot resolve fall back to a full review.
 - Natural next steps: growing the evaluation set and tuning the prompt and threshold from its results, a Redis-backed queue for horizontal scaling, per-repository configuration files, and review-history storage.
 
 ## Testing
 
 ```bash
-npm test          # 95 tests: unit + integration
+npm test          # 112 tests: unit + integration
 npm run typecheck
 npm run build
 ```
 
-The unit tests cover unified-diff parsing and line snapping, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, truncation recovery, webhook handling, token-client authentication, token-mode CLI parsing, strict eval matching, P/R/F1 edge cases, calibration math, fixture validation, and baseline deltas. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, queue rerun coalescing, token-mode orchestration without GitHub App credentials, and the evaluation pipeline with an injected analyzer.
+The unit tests cover unified-diff parsing and strict line validation, tool-payload validation, evidence-gated suggestions, Semgrep merging, summary formatting, prompt budgeting, bounded repo-context windows, truncation recovery, webhook handling, token-client authentication, token-mode CLI parsing, strict eval matching, P/R/F1 edge cases, calibration math, fixture validation, and baseline deltas. The integration tests run the reviewer against a mocked Octokit and Anthropic client to check the posted review payload, the 422 summary-only fallback, idempotency skipping, queue rerun coalescing, token-mode orchestration without GitHub App credentials, and the evaluation pipeline with an injected analyzer.

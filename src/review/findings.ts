@@ -162,7 +162,8 @@ function sanitizeSuggestion(
 /**
  * Validates model findings against the real diff: paths must exist, line
  * numbers must be visible on the head side, evidence must match, and any
- * suggestion is only kept when the quoted evidence was verified.
+ * suggestion is only kept when the quoted evidence was verified. A finding
+ * anchored outside the diff is rejected, never moved onto a different line.
  */
 export function normalizeLlmFindings(
   raw: LlmFinding[],
@@ -186,29 +187,24 @@ export function normalizeLlmFindings(
       continue;
     }
 
-    let line = finding.line;
+    const line = finding.line;
     if (!context.index.has(line)) {
-      const snapped = nearestReviewableLine(context.diff, line, 3);
-      if (snapped === null) {
-        rejected.push({
-          reason: "line is outside the diff hunks",
-          title: finding.title,
-          path: finding.path,
-          line: finding.line,
-        });
-        continue;
-      }
-      line = snapped;
+      rejected.push({
+        reason: "line is outside the diff hunks",
+        title: finding.title,
+        path: finding.path,
+        line: finding.line,
+      });
+      continue;
     }
 
     let startLine: number | undefined;
-    if (finding.start_line !== undefined && finding.start_line < line) {
-      let start = finding.start_line;
-      if (!context.index.has(start)) {
-        const snappedStart = nearestReviewableLine(context.diff, start, 2);
-        if (snappedStart !== null && snappedStart < line) start = snappedStart;
-      }
-      if (context.index.has(start) && start < line) startLine = start;
+    if (
+      finding.start_line !== undefined &&
+      finding.start_line < line &&
+      context.index.has(finding.start_line)
+    ) {
+      startLine = finding.start_line;
     }
 
     const targetLines = linesInRange(context.index, startLine ?? line, line);

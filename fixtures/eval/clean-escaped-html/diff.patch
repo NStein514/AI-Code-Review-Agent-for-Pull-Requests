@@ -1,0 +1,9 @@
+diff --git a/src/comment.ts b/src/comment.ts
+index 4d5e6f7..8a9b0c1 100644
+--- a/src/comment.ts
++++ b/src/comment.ts
+@@ -6,2 +6,3 @@
+-  node.innerHTML = comment.body;
++  const safe = escapeHtml(comment.body);
++  node.innerHTML = safe;
+ }

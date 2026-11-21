@@ -1,6 +1,7 @@
 import Anthropic from "@anthropic-ai/sdk";
 import type { Logger } from "pino";
 import type { FileDiff } from "../github/diff.js";
+import type { SourceFile } from "../github/contents.js";
 import type { TokenUsage } from "../types.js";
 import { parseLlmToolInput, type LlmFinding } from "./findings.js";
 import { SYSTEM_PROMPT, buildUserPrompt } from "./prompt.js";
@@ -38,6 +39,8 @@ export interface AnalyzeInput {
   files: FileDiff[];
   omittedFiles: number;
   semgrepFindings: SemgrepFinding[];
+  /** Head-revision contents for the changed files, used as verification context. */
+  sources?: SourceFile[];
   customInstructions?: string;
 }
 
@@ -63,6 +66,10 @@ export interface AnalyzerOptions {
   model: string;
   maxTokens: number;
   maxDiffChars: number;
+  /** Unchanged lines to include on each side of a hunk. Zero disables context. */
+  contextLines?: number;
+  /** Total character budget for repo context in one prompt. */
+  maxContextChars?: number;
   logger?: Logger;
   /** Injected for tests; defaults to the Anthropic Messages API. */
   callModel?: ModelCaller;
@@ -235,6 +242,9 @@ export class ReviewerAnalyzer {
       ...input,
       files,
       maxDiffChars: this.options.maxDiffChars,
+      sources: input.sources ?? [],
+      contextLines: this.options.contextLines ?? 0,
+      maxContextChars: this.options.maxContextChars ?? 0,
     });
 
     this.options.logger?.debug(
@@ -244,6 +254,7 @@ export class ReviewerAnalyzer {
         files: files.length,
         maxTokens,
         promptChars: built.prompt.length,
+        contextFiles: built.contextFiles,
         truncated: built.truncated,
       },
       "sending review batch",

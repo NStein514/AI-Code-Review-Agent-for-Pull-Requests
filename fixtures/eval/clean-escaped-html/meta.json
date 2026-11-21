@@ -1,0 +1,5 @@
+{
+  "title": "Escape comment HTML",
+  "description": "Escapes the comment body before assigning it to innerHTML.",
+  "expected": []
+}

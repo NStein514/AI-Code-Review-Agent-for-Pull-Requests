@@ -19,6 +19,7 @@ interface CliOptions {
   model?: string;
   json: boolean;
   semgrep: boolean;
+  context: boolean;
   saveBaseline: boolean;
   verbose: boolean;
 }
@@ -35,6 +36,7 @@ Options:
   --model <id>           Override ANTHROPIC_MODEL
   --json                 Print the report and baseline comparison as JSON
   --no-semgrep           Skip the static-analysis baseline
+  --no-context           Omit head-revision source windows (ablation)
   --no-save-baseline     Do not write the current run to the baseline file
   --verbose              List missed labels and false positives per case
   --help                 Show this help
@@ -47,6 +49,7 @@ function parseArgs(argv: string[]): CliOptions {
   let model: string | undefined;
   let json = false;
   let semgrep = true;
+  let context = true;
   let saveBaseline = true;
   let verbose = false;
 
@@ -85,6 +88,9 @@ function parseArgs(argv: string[]): CliOptions {
       case "--no-semgrep":
         semgrep = false;
         break;
+      case "--no-context":
+        context = false;
+        break;
       case "--no-save-baseline":
         saveBaseline = false;
         break;
@@ -108,6 +114,7 @@ function parseArgs(argv: string[]): CliOptions {
     ...(model ? { model } : {}),
     json,
     semgrep,
+    context,
     saveBaseline,
     verbose,
   };
@@ -142,7 +149,9 @@ function printReport(
   console.log(
     `\nEvaluation: ${report.cases.length} cases (${labeled} labeled, ${
       report.cases.length - labeled
-    } clean) · ${report.model} · threshold ${report.threshold.toFixed(2)}`,
+    } clean) · ${report.model} · threshold ${report.threshold.toFixed(2)} · ${
+      report.contextLines > 0 ? `context ${report.contextLines} lines` : "context off"
+    }`,
   );
   console.log("");
 
@@ -264,6 +273,8 @@ async function main(): Promise<void> {
       casesDir: options.casesDir,
       anthropic,
       maxDiffChars: config.review.maxDiffChars,
+      contextLines: options.context ? config.review.contextLines : 0,
+      maxContextChars: options.context ? config.review.maxContextChars : 0,
       semgrep: { ...config.semgrep, enabled: options.semgrep },
       threshold: options.threshold ?? config.review.confidenceThreshold,
       onCaseStart: (name, index, total) => {

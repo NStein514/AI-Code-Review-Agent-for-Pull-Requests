@@ -40,6 +40,13 @@ async function writeCase(
     ].join("\n"),
     "utf8",
   );
+  const repoPath = path.join(dir, "repo", ...filePath.split("/"));
+  await mkdir(path.dirname(repoPath), { recursive: true });
+  await writeFile(
+    repoPath,
+    ["before", addedLine, "after"].join("\n") + "\n",
+    "utf8",
+  );
   await writeFile(
     path.join(dir, "meta.json"),
     JSON.stringify({ title: name, expected }),
@@ -67,6 +74,8 @@ function run(threshold: number) {
       casesDir: root,
       anthropic: { apiKey: "test-key", model: "test-model", maxTokens: 2048 },
       maxDiffChars: 10_000,
+      contextLines: 30,
+      maxContextChars: 12_000,
       semgrep: {
         enabled: false,
         config: "unused",
@@ -146,6 +155,8 @@ describe("evaluate", () => {
         casesDir: root,
         anthropic: { apiKey: "test-key", model: "test-model", maxTokens: 2048 },
         maxDiffChars: 10_000,
+        contextLines: 30,
+        maxContextChars: 12_000,
         semgrep: {
           enabled: false,
           config: "unused",
@@ -158,6 +169,15 @@ describe("evaluate", () => {
     );
 
     expect(report.failedModelBatches).toBe(2);
+  });
+
+  it("passes head-revision sources to the analyzer for context", async () => {
+    analyze.mockClear();
+    await run(0.6);
+
+    const inputs = analyze.mock.calls.map((call) => call[0] as AnalyzeInput);
+    expect(inputs).toHaveLength(2);
+    expect(inputs.every((input) => input.sources?.length === 1)).toBe(true);
   });
 
   it("applies the confidence threshold to posted metrics but not calibration", async () => {

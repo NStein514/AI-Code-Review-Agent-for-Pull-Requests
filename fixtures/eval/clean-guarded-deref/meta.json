@@ -1,0 +1,5 @@
+{
+  "title": "Simplify display name",
+  "description": "Stores the trimmed name and returns it uppercased.",
+  "expected": []
+}

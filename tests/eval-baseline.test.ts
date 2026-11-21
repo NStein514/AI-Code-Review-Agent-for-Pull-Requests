@@ -57,6 +57,7 @@ function report(overrides: Partial<EvalReport> = {}): EvalReport {
     },
     usage: { inputTokens: 10, outputTokens: 5 },
     durationMs: 100,
+    contextLines: 30,
     failedModelBatches: 0,
     warnings: [],
     ...overrides,

@@ -4,6 +4,7 @@ import {
   buildCommentBody,
   buildReviewBody,
   hasReviewMarker,
+  markedSha,
   markerFor,
   serializeFindingsAsText,
 } from "../src/review/summary.js";
@@ -36,6 +37,12 @@ describe("review markers", () => {
     expect(markerFor(headSha)).toContain(headSha);
     expect(hasReviewMarker(`hello ${markerFor(headSha)}`, headSha)).toBe(true);
     expect(hasReviewMarker("hello", headSha)).toBe(false);
+  });
+
+  it("extracts the reviewed SHA from a marker", () => {
+    expect(markedSha(`prefix ${markerFor(headSha)} suffix`)).toBe(headSha);
+    expect(markedSha("no marker here")).toBeNull();
+    expect(markedSha(null)).toBeNull();
   });
 });
 
@@ -90,6 +97,25 @@ describe("buildReviewBody", () => {
       durationMs: 100,
     });
     expect(body).toContain("**No reviewable changes**");
+  });
+
+  it("describes an incremental pass and reconciled comments", () => {
+    const body = buildReviewBody({
+      headSha,
+      posted: [],
+      withheld: [],
+      filesReviewed: 0,
+      skippedFiles: [],
+      semgrep: { available: true, count: 0 },
+      analysisErrors: [],
+      durationMs: 900,
+      incremental: { fromSha: "b".repeat(40), commits: 2 },
+      reconciled: 2,
+    });
+
+    expect(body).toContain("Incremental review: 2 commits since `bbbbbbb`.");
+    expect(body).toContain("**No reviewable changes** in this update.");
+    expect(body).toContain("Removed 2 outdated inline comments.");
   });
 
   it("escapes table separators in titles", () => {

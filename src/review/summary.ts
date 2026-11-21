@@ -6,6 +6,13 @@ export function markerFor(headSha: string): string {
   return `${REVIEW_MARKER_PREFIX}${headSha} -->`;
 }
 
+/** Returns the SHA from the first review marker in a review body. */
+export function markedSha(body: string | null | undefined): string | null {
+  if (typeof body !== "string") return null;
+  const match = /<!-- ai-code-review:([0-9a-f]{7,40}) -->/i.exec(body);
+  return match?.[1]?.toLowerCase() ?? null;
+}
+
 export function hasReviewMarker(body: string | null | undefined, headSha: string): boolean {
   return typeof body === "string" && body.includes(markerFor(headSha));
 }
@@ -56,6 +63,8 @@ export interface SummaryInput {
   semgrep: { available: boolean; count: number; error?: string };
   analysisErrors: string[];
   durationMs: number;
+  incremental?: { fromSha: string; commits: number };
+  reconciled?: number;
 }
 
 export function buildReviewBody(input: SummaryInput): string {
@@ -74,10 +83,21 @@ export function buildReviewBody(input: SummaryInput): string {
     "",
   ];
 
+  if (input.incremental) {
+    lines.push(
+      `Incremental review: ${input.incremental.commits} commit${
+        input.incremental.commits === 1 ? "" : "s"
+      } since \`${input.incremental.fromSha.slice(0, 7)}\`.`,
+      "",
+    );
+  }
+
   if (total === 0) {
     lines.push(
       input.filesReviewed === 0
-        ? "**No reviewable changes** (only generated, vendored, binary, or oversized files)."
+        ? input.incremental
+          ? "**No reviewable changes** in this update."
+          : "**No reviewable changes** (only generated, vendored, binary, or oversized files)."
         : `**No issues found** in ${input.filesReviewed} file${
             input.filesReviewed === 1 ? "" : "s"
           } reviewed.`,
@@ -103,6 +123,15 @@ export function buildReviewBody(input: SummaryInput): string {
         )}\` | ${escapeTableCell(finding.title)} | ${confidenceLabel(finding)} |`,
       );
     }
+  }
+
+  if ((input.reconciled ?? 0) > 0) {
+    lines.push(
+      "",
+      `Removed ${input.reconciled} outdated inline comment${
+        input.reconciled === 1 ? "" : "s"
+      }.`,
+    );
   }
 
   const staticSummary = input.semgrep.available

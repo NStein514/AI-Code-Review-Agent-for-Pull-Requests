@@ -1,0 +1,13 @@
+{
+  "title": "Move cache TTL into a local",
+  "description": "Replaces the shared TTL constant with a local value.",
+  "expected": [
+    {
+      "path": "src/cache.ts",
+      "line": 4,
+      "category": "bug",
+      "minSeverity": "medium",
+      "note": "Returns 60 ms instead of the 60,000 ms CACHE_TTL_MS constant above the hunk, so entries expire almost immediately."
+    }
+  ]
+}

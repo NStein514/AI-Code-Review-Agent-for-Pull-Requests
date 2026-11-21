@@ -23,6 +23,18 @@ const PATCH = [
 const diff = parseFilePatch("src/example.ts", PATCH, "modified");
 const files = [diff];
 
+const contextDiff = parseFilePatch(
+  "src/context.ts",
+  [
+    "@@ -6,2 +6,3 @@",
+    "-  return headers[AUTH_HEADER];",
+    '+  const key = headers["api-key"];',
+    '+  return typeof key === "string" ? key : undefined;',
+    " }",
+  ].join("\n"),
+  "modified",
+);
+
 const validFinding: LlmFinding = {
   path: "src/example.ts",
   line: 3,
@@ -84,12 +96,42 @@ describe("normalizeLlmFindings", () => {
     expect(result.accepted[0]?.confidence).toBeCloseTo(0.77, 2);
   });
 
-  it("snaps nearby lines to a line visible in the diff", () => {
+  it("cannot snap a finding anchored on a verification-context line onto a diff line", () => {
     const result = normalizeLlmFindings(
-      [{ ...validFinding, line: 6, evidence: "const d = 5;" }],
-      files,
+      [
+        {
+          ...validFinding,
+          path: "src/context.ts",
+          line: 3,
+          category: "security",
+          evidence: 'const AUTH_HEADER = "x-api-key";',
+        },
+      ],
+      [contextDiff],
     );
-    expect(result.accepted[0]?.line).toBe(4);
+
+    expect(result.accepted).toHaveLength(0);
+    expect(result.rejected[0]?.reason).toContain("outside the diff");
+    expect(result.rejected[0]?.line).toBe(3);
+  });
+
+  it("does not snap a context-only start_line into a multi-line comment", () => {
+    const result = normalizeLlmFindings(
+      [
+        {
+          ...validFinding,
+          path: "src/context.ts",
+          line: 7,
+          start_line: 5,
+          evidence: 'return typeof key === "string" ? key : undefined;',
+        },
+      ],
+      [contextDiff],
+    );
+
+    expect(result.accepted).toHaveLength(1);
+    expect(result.accepted[0]?.line).toBe(7);
+    expect(result.accepted[0]?.startLine).toBeUndefined();
   });
 
   it("rejects locations that are not in the diff", () => {

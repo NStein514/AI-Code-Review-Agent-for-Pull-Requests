@@ -140,7 +140,8 @@ export function buildAddedLines(diff: FileDiff): Set<number> {
 
 /**
  * GitHub only accepts inline comments on lines that appear in the diff. When a
- * model reports a line a few rows away, snap it to the closest visible line.
+ * static-analysis finding lands a few rows away, snap it to the closest
+ * visible line. Model findings are validated strictly instead.
  */
 export function nearestReviewableLine(
   diff: FileDiff,

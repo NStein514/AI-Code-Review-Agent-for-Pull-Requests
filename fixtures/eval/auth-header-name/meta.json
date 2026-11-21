@@ -1,0 +1,13 @@
+{
+  "title": "Read the API key header",
+  "description": "Normalizes the API key header into a string or undefined.",
+  "expected": [
+    {
+      "path": "src/auth.ts",
+      "line": 6,
+      "category": "security",
+      "minSeverity": "high",
+      "note": "Reads \"api-key\" while the module defines AUTH_HEADER as \"x-api-key\" above the hunk, so authentication silently fails."
+    }
+  ]
+}

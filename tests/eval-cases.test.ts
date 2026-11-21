@@ -4,16 +4,21 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildLineIndex, findFileDiff } from "../src/github/diff.js";
 import { loadEvalCases } from "../src/eval/cases.js";
+import { buildUserPrompt } from "../src/review/prompt.js";
 
 const root = path.join(process.cwd(), "fixtures", "eval");
 
 describe("eval fixtures", () => {
-  it("loads twelve cases in sorted order", async () => {
+  it("loads sixteen cases in sorted order", async () => {
     const cases = await loadEvalCases(root);
 
     expect(cases.map((entry) => entry.name)).toEqual([
+      "auth-header-name",
+      "cache-ttl-unit",
       "check-then-act-race",
       "clean-config",
+      "clean-escaped-html",
+      "clean-guarded-deref",
       "clean-refactor",
       "clean-tests",
       "hardcoded-secret",
@@ -27,16 +32,16 @@ describe("eval fixtures", () => {
     ]);
   });
 
-  it("has nine labeled cases and three clean cases", async () => {
+  it("has eleven labeled cases and five clean cases", async () => {
     const cases = await loadEvalCases(root);
 
     const labeled = cases.filter((entry) => entry.meta.expected.length > 0);
     const clean = cases.filter((entry) => entry.meta.expected.length === 0);
 
-    expect(labeled).toHaveLength(9);
-    expect(clean).toHaveLength(3);
+    expect(labeled).toHaveLength(11);
+    expect(clean).toHaveLength(5);
     expect(labeled.reduce((total, entry) => total + entry.meta.expected.length, 0)).toBe(
-      11,
+      13,
     );
   });
 
@@ -56,15 +61,55 @@ describe("eval fixtures", () => {
     }
   });
 
-  it("ships head-revision sources for the Semgrep cases", async () => {
+  it("puts each context case's defining line into the prompt context", async () => {
+    const cases = await loadEvalCases(root);
+    const checks: Array<[string, string]> = [
+      ["auth-header-name", "AUTH_HEADER"],
+      ["cache-ttl-unit", "CACHE_TTL_MS"],
+      ["clean-guarded-deref", "if (!user)"],
+      ["clean-escaped-html", "function escapeHtml"],
+    ];
+
+    for (const [name, needle] of checks) {
+      const entry = cases.find((candidate) => candidate.name === name);
+      expect(entry, name).toBeDefined();
+      if (!entry) continue;
+
+      const built = buildUserPrompt({
+        repoFullName: "eval/fixtures",
+        prNumber: 1,
+        prTitle: entry.name,
+        prBody: null,
+        author: "eval",
+        baseRef: "main",
+        headRef: "eval",
+        headSha: "0".repeat(40),
+        files: entry.files,
+        omittedFiles: 0,
+        semgrepFindings: [],
+        sources: entry.repoFiles,
+        contextLines: 30,
+        maxContextChars: 12_000,
+        maxDiffChars: 20_000,
+      });
+
+      expect(built.contextFiles).toBe(1);
+      expect(built.prompt, name).toContain(needle);
+    }
+  });
+
+  it("ships head-revision sources for Semgrep and context cases", async () => {
     const cases = await loadEvalCases(root);
     const sql = cases.find((entry) => entry.name === "sql-injection");
     const secret = cases.find((entry) => entry.name === "hardcoded-secret");
+    const auth = cases.find((entry) => entry.name === "auth-header-name");
     const clean = cases.find((entry) => entry.name === "clean-refactor");
 
     expect(sql?.repoFiles).toHaveLength(1);
     expect(sql?.repoFiles[0]?.path).toBe("src/users.ts");
     expect(secret?.repoFiles[0]?.path).toBe("src/config.ts");
+    expect(auth?.repoFiles).toHaveLength(1);
+    expect(auth?.repoFiles[0]?.path).toBe("src/auth.ts");
     expect(clean?.repoFiles).toHaveLength(0);
   });
 });

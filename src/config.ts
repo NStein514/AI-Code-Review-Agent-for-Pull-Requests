@@ -49,6 +49,8 @@ const reviewSchema = z.object({
   REVIEW_MAX_FILES: z.coerce.number().int().min(1).max(200).default(20),
   REVIEW_MAX_DIFF_CHARS: z.coerce.number().int().min(2_000).max(400_000).default(60_000),
   REVIEW_MAX_FILE_PATCH_CHARS: z.coerce.number().int().min(1_000).max(400_000).default(24_000),
+  REVIEW_MAX_CONTEXT_CHARS: z.coerce.number().int().min(0).max(100_000).default(12_000),
+  REVIEW_CONTEXT_LINES: z.coerce.number().int().min(0).max(200).default(30),
   REVIEW_MAX_FINDINGS: z.coerce.number().int().min(1).max(100).default(25),
   REVIEW_SKIP_DRAFTS: boolFlag(true),
   REVIEW_REVIEW_FORKS: boolFlag(false),
@@ -91,6 +93,8 @@ export interface ReviewConfig {
   maxFiles: number;
   maxDiffChars: number;
   maxFilePatchChars: number;
+  maxContextChars: number;
+  contextLines: number;
   maxFindings: number;
   skipDrafts: boolean;
   reviewForks: boolean;
@@ -196,6 +200,8 @@ export function loadLlmConfig(env: Env = process.env): LlmShellConfig {
       maxFiles: reviewEnv.REVIEW_MAX_FILES,
       maxDiffChars: reviewEnv.REVIEW_MAX_DIFF_CHARS,
       maxFilePatchChars: reviewEnv.REVIEW_MAX_FILE_PATCH_CHARS,
+      maxContextChars: reviewEnv.REVIEW_MAX_CONTEXT_CHARS,
+      contextLines: reviewEnv.REVIEW_CONTEXT_LINES,
       maxFindings: reviewEnv.REVIEW_MAX_FINDINGS,
       skipDrafts: reviewEnv.REVIEW_SKIP_DRAFTS,
       reviewForks: reviewEnv.REVIEW_REVIEW_FORKS,

@@ -13,6 +13,17 @@ function diffFor(path: string, addedLine: string) {
 
 const fileA = diffFor("src/a.ts", "const a = 1;");
 const fileB = diffFor("src/b.ts", "const b = 2;");
+const contextFile = parseFilePatch(
+  "src/a.ts",
+  [
+    "@@ -2,2 +2,3 @@",
+    "-const value = 0;",
+    "+const value = 1;",
+    "+const extra = 2;",
+    " const tail = 3;",
+  ].join("\n"),
+  "modified",
+);
 
 function finding(path: string, title: string): LlmFinding {
   return {
@@ -164,5 +175,52 @@ describe("ReviewerAnalyzer truncation handling", () => {
     expect(result.failedModelCalls).toBe(3);
     expect(result.truncatedBatches).toBe(1);
     expect(result.errors[0]).toContain("could not be recovered");
+  });
+
+  it("includes verification-only source context when configured", async () => {
+    let prompt = "";
+    const callModel: ModelCaller = async (request) => {
+      prompt = request.user;
+      return {
+        stopReason: "tool_use",
+        toolCalled: true,
+        toolInput: { findings: [] },
+        usage: { inputTokens: 1, outputTokens: 1 },
+      };
+    };
+
+    const result = await new ReviewerAnalyzer({
+      apiKey: "test-key",
+      model: "test-model",
+      maxTokens: 8192,
+      maxDiffChars: 100_000,
+      contextLines: 2,
+      maxContextChars: 2_000,
+      callModel,
+    }).analyze({
+      ...input,
+      files: [contextFile],
+      sources: [
+        {
+          path: "src/a.ts",
+          content:
+            [
+              "const before = 0;",
+              "const value = 1;",
+              "const extra = 2;",
+              "const tail = 3;",
+              "const after = 4;",
+            ].join("\n") + "\n",
+        },
+      ],
+    });
+    const context = prompt.split("<file_context>")[1] ?? "";
+
+    expect(result.findings).toHaveLength(0);
+    expect(prompt).toContain("<file_context>");
+    expect(context).toContain("1 | const before = 0;");
+    expect(context).toContain("5 | const after = 4;");
+    expect(context).not.toContain("2 | const value = 1;");
+    expect(prompt).toContain("Verification-only context");
   });
 });

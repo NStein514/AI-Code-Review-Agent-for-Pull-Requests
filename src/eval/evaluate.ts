@@ -68,6 +68,8 @@ export interface EvalReport {
   };
   usage: TokenUsage;
   durationMs: number;
+  /** Source lines included on each side of a hunk; 0 when context is off. */
+  contextLines: number;
   /** Model calls that failed; any failure blocks baseline saving. */
   failedModelBatches: number;
   warnings: string[];
@@ -77,6 +79,8 @@ export interface EvaluationOptions {
   casesDir: string;
   anthropic: AnthropicConfig;
   maxDiffChars: number;
+  contextLines: number;
+  maxContextChars: number;
   semgrep: SemgrepConfig;
   threshold: number;
   onCaseStart?: (name: string, index: number, total: number) => void;
@@ -130,6 +134,8 @@ export async function evaluate(
   const analyzer = createAnalyzer({
     ...options.anthropic,
     maxDiffChars: options.maxDiffChars,
+    contextLines: options.contextLines,
+    maxContextChars: options.maxContextChars,
   });
 
   const runStatic = deps.runSemgrep ?? runSemgrep;
@@ -163,6 +169,7 @@ export async function evaluate(
       headSha: createHash("sha1").update(evalCase.name).digest("hex"),
       files: evalCase.files,
       omittedFiles: 0,
+      sources: evalCase.repoFiles,
       semgrepFindings: semgrepRun.findings,
     });
 
@@ -252,6 +259,7 @@ export async function evaluate(
     calibration,
     usage: totalUsage,
     durationMs: Date.now() - startedAt,
+    contextLines: options.contextLines,
     failedModelBatches,
     warnings,
   };

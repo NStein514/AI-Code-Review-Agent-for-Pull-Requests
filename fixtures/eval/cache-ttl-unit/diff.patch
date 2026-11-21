@@ -1,0 +1,9 @@
+diff --git a/src/cache.ts b/src/cache.ts
+index 2b3c4d5..6e7f8a9 100644
+--- a/src/cache.ts
++++ b/src/cache.ts
+@@ -4,2 +4,3 @@
+-  return CACHE_TTL_MS;
++  const ttl = 60;
++  return ttl;
+ }

@@ -28,7 +28,7 @@ const USAGE = `Usage: npm run review:diff -- --diff <file.diff> [options]
 
 Options:
   --diff <path>       Unified diff to review (required)
-  --dir <path>        Source tree used for Semgrep; enables the baseline
+  --dir <path>        Source tree for Semgrep and review context
   --no-semgrep        Skip Semgrep even when --dir is provided
   --threshold <0..1>  Override REVIEW_CONFIDENCE_THRESHOLD
   --json              Print the full result as JSON
@@ -143,23 +143,32 @@ async function main(): Promise<void> {
     ReturnType<typeof runSemgrep>
   >;
   const missingSources: string[] = [];
+  let sources: SourceFile[] = [];
 
-  if (options.semgrep && options.sourceDir) {
-    const sources = await readSourceFiles(
+  const contextEnabled =
+    config.review.contextLines > 0 && config.review.maxContextChars > 0;
+  if (options.sourceDir && (options.semgrep || contextEnabled)) {
+    const read = await readSourceFiles(
       options.sourceDir,
       diffs.map((diff) => diff.path),
     );
-    missingSources.push(...sources.missing);
-    semgrepRun = await runSemgrep({
-      files: sources.files,
-      config: config.semgrep.config,
-      timeoutMs: config.semgrep.timeoutMs,
-    });
+    sources = read.files;
+    missingSources.push(...read.missing);
+
+    if (options.semgrep) {
+      semgrepRun = await runSemgrep({
+        files: sources,
+        config: config.semgrep.config,
+        timeoutMs: config.semgrep.timeoutMs,
+      });
+    }
   }
 
   const analyzer = new ReviewerAnalyzer({
     ...config.anthropic,
     maxDiffChars: config.review.maxDiffChars,
+    contextLines: config.review.contextLines,
+    maxContextChars: config.review.maxContextChars,
   });
 
   const analysis = await analyzer.analyze({
@@ -173,6 +182,7 @@ async function main(): Promise<void> {
     headSha: "0".repeat(40),
     files: diffs,
     omittedFiles,
+    sources,
     semgrepFindings: semgrepRun.findings,
     ...(config.review.customInstructions
       ? { customInstructions: config.review.customInstructions }

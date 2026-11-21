@@ -56,4 +56,10 @@ export interface PullRequestOutcome {
   withheld: number;
   filesReviewed: number;
   durationMs: number;
+  /** Set when only commits after the last reviewed SHA were analyzed. */
+  incremental?: { fromSha: string; commits: number };
+  /** Outdated inline comments deleted from earlier reviews. */
+  reconciled?: number;
+  /** Findings skipped because an earlier review already commented there. */
+  suppressed?: number;
 }

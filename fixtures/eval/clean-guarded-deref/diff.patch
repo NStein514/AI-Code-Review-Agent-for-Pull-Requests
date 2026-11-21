@@ -1,0 +1,9 @@
+diff --git a/src/profile.ts b/src/profile.ts
+index 3c4d5e6..7f8a9b0 100644
+--- a/src/profile.ts
++++ b/src/profile.ts
+@@ -7,2 +7,3 @@
+-  return user.name.trim();
++  const name = user.name.trim();
++  return name.toUpperCase();
+ }
