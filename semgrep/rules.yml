@@ -1,0 +1,74 @@
+rules:
+  - id: ai-review-js-eval
+    languages:
+      - javascript
+      - typescript
+    message: eval() executes arbitrary code. Avoid evaluating untrusted input.
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: HIGH
+      owasp:
+        - A03:2021 - Injection
+    pattern: eval(...)
+
+  - id: ai-review-js-sql-concat
+    languages:
+      - javascript
+      - typescript
+    message: SQL statement built with string concatenation. Use parameterized queries or placeholders.
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: MEDIUM
+      owasp:
+        - A03:2021 - Injection
+    patterns:
+      - pattern-either:
+          - pattern: $DB.query($A + $B, ...)
+          - pattern: $DB.query($A + $B)
+          - pattern: $DB.execute($A + $B, ...)
+          - pattern: $DB.execute($A + $B)
+
+  - id: ai-review-python-sql-format
+    languages:
+      - python
+    message: SQL statement built with string formatting. Use parameterized queries.
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: MEDIUM
+      owasp:
+        - A03:2021 - Injection
+    patterns:
+      - pattern-either:
+          - pattern: $CURSOR.execute($QUERY % $ARGS)
+          - pattern: $CURSOR.execute($QUERY.format(...))
+          - pattern: $CURSOR.execute($QUERY + $ARGS)
+
+  - id: ai-review-python-subprocess-shell
+    languages:
+      - python
+    message: subprocess is called with shell=True. Avoid passing untrusted input through a shell.
+    severity: WARNING
+    metadata:
+      category: security
+      confidence: HIGH
+    patterns:
+      - pattern: subprocess.$FUNC(..., shell=True, ...)
+
+  - id: ai-review-hardcoded-secret
+    languages:
+      - javascript
+      - typescript
+      - python
+    message: Possible hardcoded credential. Move the value into a secret store.
+    severity: ERROR
+    metadata:
+      category: security
+      confidence: MEDIUM
+    patterns:
+      - pattern-regex: >-
+          (?i)\b(password|passwd|pwd|secret|api[_-]?key|apikey|access[_-]?token|private[_-]?key)\b\s*[:=]\s*["'][^"'\s]{8,}["']
+      - pattern-not-regex: >-
+          (?i)(example|placeholder|changeme|dummy|redacted|your[_-]|<[^>]+>)
